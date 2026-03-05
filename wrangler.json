@@ -1,0 +1,16 @@
+{
+	"compatibility_date": "2025-10-08",
+	"main": "src/index.ts",
+	"name": "raingaugebackend",
+	"upload_source_maps": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_id": "52fcc4d7-abf8-46fa-967c-d20003b3b048",
+			"database_name": "self_recording_rain_gauge"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}
