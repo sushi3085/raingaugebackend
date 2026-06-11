@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>降雨組體監測系統</title>
+
+  <!-- Fonts: Outfit (UI) + DM Mono (data / timestamps) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Chart.js + DataLabels plugin (globally auto-registers ChartDataLabels) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+
+  <style>
+    /* ─── CSS Variables ────────────────────────────────────────── */
+    :root {
+      --aqua:        #27b5cc;
+      --aqua-dark:   #008ea1;
+      --aqua-light:  #e0f7fa;
+      --mint:        #43b87a;
+      --mint-dark:   #2d7d52;
+      --mint-light:  #e6f5ed;
+      --text-dark:   #17323c;
+      --text-mid:    #486470;
+      --text-light:  #85aab5;
+      --border:      #b2dce6;
+      --bg-body:     linear-gradient(155deg, #ddf1f9 0%, #e0f5ea 100%);
+      --bg-card:     rgba(255,255,255,0.93);
+      --bg-input:    #f0fafc;
+      --shadow-card: 0 4px 24px rgba(39,181,204,0.13), 0 1px 4px rgba(0,0,0,0.06);
+      --shadow-btn-aqua:  0 3px 14px rgba(39,181,204,0.40);
+      --shadow-btn-mint:  0 3px 14px rgba(67,184,122,0.40);
+      --r-card:  20px;
+      --r-ctrl:  10px;
+    }
+
+    /* ─── Reset / Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-body);
+      min-height: 100vh;
+      color: var(--text-dark);
+    }
+
+    /* ─── Header ───────────────────────────────────────────────── */
+    .site-header {
+      position: sticky; top: 0; z-index: 200;
+      background: linear-gradient(135deg, var(--aqua-dark) 0%, var(--mint-dark) 100%);
+      padding: 22px 24px 18px;
+      text-align: center;
+      box-shadow: 0 2px 18px rgba(0,0,0,0.2);
+    }
+    .site-header h1 {
+      font-size: clamp(1.2rem, 4.5vw, 1.9rem);
+      font-weight: 700; color: #fff; letter-spacing: 0.04em;
+    }
+    .site-header p {
+      font-size: 0.78rem; color: rgba(255,255,255,0.72);
+      margin-top: 4px; font-weight: 300; letter-spacing: 0.02em;
+    }
+
+    /* ─── Main Layout ──────────────────────────────────────────── */
+    main {
+      max-width: 1100px; margin: 0 auto;
+      padding: 28px 14px 52px;
+      display: flex; flex-direction: column; gap: 26px;
+    }
+
+    /* ─── Section Cards ────────────────────────────────────────── */
+    .s-card {
+      background: var(--bg-card);
+      border-radius: var(--r-card);
+      padding: 26px 28px;
+      box-shadow: var(--shadow-card);
+      border: 1px solid rgba(39,181,204,0.18);
+      animation: fadeUp 0.45s ease both;
+    }
+    .s-card:nth-child(1) { animation-delay: 0.05s; }
+    .s-card:nth-child(2) { animation-delay: 0.15s; }
+    .s-card:nth-child(3) { animation-delay: 0.25s; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Section Titles ───────────────────────────────────────── */
+    .s-title {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 1.05rem; font-weight: 600;
+      color: var(--aqua-dark); margin-bottom: 20px;
+    }
+    .s-title-bar {
+      width: 4px; height: 22px; border-radius: 3px; flex-shrink: 0;
+      background: linear-gradient(to bottom, var(--aqua), var(--mint-dark));
+    }
+
+    /* ─── Control Rows ─────────────────────────────────────────── */
+    .ctrl-row {
+      display: flex; flex-wrap: wrap;
+      gap: 12px; align-items: flex-end;
+      margin-bottom: 16px;
+    }
+    .ctrl-group {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .ctrl-label {
+      font-size: 0.68rem; font-weight: 700;
+      color: var(--text-mid); text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .ctrl-group select {
+      padding: 8px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--r-ctrl);
+      background: var(--bg-input);
+      color: var(--text-dark);
+      font-family: 'DM Mono', monospace; font-size: 0.88rem;
+      cursor: pointer; outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+      min-width: 68px;
+    }
+    .ctrl-group select:focus {
+      border-color: var(--aqua);
+      box-shadow: 0 0 0 3px rgba(39,181,204,0.18);
+    }
+
+    /* Range block (start / end group) */
+    .range-block { display: flex; flex-direction: column; gap: 5px; }
+    .range-block-label {
+      font-size: 0.7rem; font-weight: 700;
+      color: var(--aqua-dark); text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .range-block-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+
+    /* Arrow separator */
+    .ctrl-sep {
+      align-self: flex-end;
+      padding-bottom: 9px;
+      color: var(--text-light); font-size: 1.2rem; font-weight: 400;
+      user-select: none;
+    }
+
+    /* ─── Buttons ──────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 20px; border: none; border-radius: var(--r-ctrl);
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn-query {
+      background: linear-gradient(135deg, var(--aqua) 0%, var(--aqua-dark) 100%);
+      color: #fff; box-shadow: var(--shadow-btn-aqua);
+    }
+    .btn-query:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(39,181,204,0.52);
+    }
+    .btn-export {
+      background: linear-gradient(135deg, var(--mint) 0%, var(--mint-dark) 100%);
+      color: #fff; box-shadow: var(--shadow-btn-mint);
+    }
+    .btn-export:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(67,184,122,0.52);
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+    /* ─── Alert Banner ─────────────────────────────────────────── */
+    .alert {
+      display: none; padding: 10px 14px;
+      border-radius: 10px; font-size: 0.84rem;
+      margin-bottom: 14px; line-height: 1.5;
+    }
+    .alert.show-warn    { display:block; background:#fffde7; border:1px solid #f9cf3e; color:#6d4c00; }
+    .alert.show-error   { display:block; background:#ffebee; border:1px solid #ef9a9a; color:#b71c1c; }
+    .alert.show-success { display:block; background:var(--mint-light); border:1px solid #a5d6a7; color:#1b5e20; }
+
+    /* ─── Chart Area ───────────────────────────────────────────── */
+    .chart-wrapper {
+      overflow-x: auto; overflow-y: hidden;
+      border-radius: 12px;
+      background: rgba(220,245,252,0.22);
+      border: 1px solid rgba(39,181,204,0.12);
+    }
+    .chart-inner {
+      position: relative;
+      height: 320px; min-width: 100%;
+    }
+    .chart-inner canvas { display: block; }
+
+    /* ─── Status Message ───────────────────────────────────────── */
+    .status-msg {
+      text-align: center; padding: 22px;
+      font-size: 0.88rem; color: var(--text-light);
+    }
+    .status-msg.hidden { display: none; }
+    .status-msg.is-error { color: #c62828; }
+
+    /* ─── Spinner ──────────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(39,181,204,0.3);
+      border-top-color: var(--aqua); border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: -3px; margin-right: 7px;
+    }
+
+    /* ─── Export-specific ──────────────────────────────────────── */
+    .export-note {
+      background: rgba(230,245,237,0.8);
+      border: 1px solid #c8e6c9; border-radius: 10px;
+      padding: 11px 16px; font-size: 0.84rem;
+      color: var(--text-mid); margin-bottom: 18px;
+    }
+    .filename-group { display: flex; flex-direction: column; gap: 4px; }
+    .filename-group input {
+      padding: 8px 12px;
+      border: 1.5px solid var(--border); border-radius: var(--r-ctrl);
+      background: var(--bg-input); color: var(--text-dark);
+      font-family: 'DM Mono', monospace; font-size: 0.88rem; outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+      min-width: 180px;
+    }
+    .filename-group input:focus {
+      border-color: var(--mint);
+      box-shadow: 0 0 0 3px rgba(67,184,122,0.18);
+    }
+
+    /* ─── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .s-card { padding: 18px 14px; }
+      .chart-inner { height: 270px; }
+      .ctrl-group select { min-width: 56px; font-size: 0.82rem; padding: 7px 7px; }
+      .btn { font-size: 0.84rem; padding: 8px 14px; }
+      .ctrl-sep { padding-bottom: 7px; font-size: 1rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ─── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <h1>🌧 降雨組體監測系統</h1>
+  <p>翻斗式雨量計資料視覺化平台 · Tipping Bucket Rain Gauge Monitor</p>
+</header>
+
+<main>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Section 1 – 當日降雨組體圖                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="s-card">
+    <div class="s-title">
+      <div class="s-title-bar"></div>
+      當日降雨組體圖
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <span class="ctrl-label">年</span>
+        <select id="d1Year"></select>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">月</span>
+        <select id="d1Month"></select>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">日</span>
+        <select id="d1Day"></select>
+      </div>
+      <button class="btn btn-query" id="d1QueryBtn" onclick="queryDailyData()">
+        🔍 查詢
+      </button>
+    </div>
+
+    <div class="alert" id="d1Alert"></div>
+
+    <div class="chart-wrapper">
+      <div class="chart-inner" id="d1ChartInner">
+        <canvas id="d1Canvas"></canvas>
+      </div>
+    </div>
+    <div class="status-msg" id="d1Status">請選擇日期後按下查詢</div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Section 2 – 特定時間段降雨組體圖                            -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="s-card">
+    <div class="s-title">
+      <div class="s-title-bar"></div>
+      特定時間段降雨組體圖
+    </div>
+
+    <div class="ctrl-row">
+      <!-- Start -->
+      <div class="range-block">
+        <span class="range-block-label">🕐 開始時間</span>
+        <div class="range-block-row">
+          <div class="ctrl-group"><span class="ctrl-label">年</span><select id="rsYear"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">月</span><select id="rsMonth"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">日</span><select id="rsDay"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">時</span><select id="rsHour"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">分</span><select id="rsMinute"></select></div>
+        </div>
+      </div>
+
+      <div class="ctrl-sep">→</div>
+
+      <!-- End -->
+      <div class="range-block">
+        <span class="range-block-label">🕕 結束時間</span>
+        <div class="range-block-row">
+          <div class="ctrl-group"><span class="ctrl-label">年</span><select id="reYear"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">月</span><select id="reMonth"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">日</span><select id="reDay"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">時</span><select id="reHour"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">分</span><select id="reMinute"></select></div>
+        </div>
+      </div>
+
+      <button class="btn btn-query" id="d2QueryBtn" onclick="queryRangeData()">
+        🔍 查詢
+      </button>
+    </div>
+
+    <div class="alert" id="d2Alert"></div>
+
+    <div class="chart-wrapper">
+      <div class="chart-inner" id="d2ChartInner">
+        <canvas id="d2Canvas"></canvas>
+      </div>
+    </div>
+    <div class="status-msg" id="d2Status">請選擇時間範圍後按下查詢</div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Section 3 – 資料匯出                                        -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section class="s-card">
+    <div class="s-title">
+      <div class="s-title-bar"></div>
+      資料匯出
+    </div>
+
+    <div class="export-note">
+      📋 匯出時間範圍最長 <strong>7 天</strong>。超過上限時系統將提醒您，伺服器端也會自動截斷結束時間。
+    </div>
+
+    <div class="ctrl-row">
+      <!-- Start -->
+      <div class="range-block">
+        <span class="range-block-label">📅 開始時間</span>
+        <div class="range-block-row">
+          <div class="ctrl-group"><span class="ctrl-label">年</span><select id="esYear"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">月</span><select id="esMonth"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">日</span><select id="esDay"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">時</span><select id="esHour"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">分</span><select id="esMinute"></select></div>
+        </div>
+      </div>
+
+      <div class="ctrl-sep">→</div>
+
+      <!-- End -->
+      <div class="range-block">
+        <span class="range-block-label">📅 結束時間</span>
+        <div class="range-block-row">
+          <div class="ctrl-group"><span class="ctrl-label">年</span><select id="eeYear"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">月</span><select id="eeMonth"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">日</span><select id="eeDay"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">時</span><select id="eeHour"></select></div>
+          <div class="ctrl-group"><span class="ctrl-label">分</span><select id="eeMinute"></select></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert" id="expAlert"></div>
+
+    <div class="ctrl-row" style="margin-bottom:0;">
+      <div class="filename-group">
+        <span class="ctrl-label">檔案名稱</span>
+        <input type="text" id="exportFilename" value="rainfall_data" placeholder="rainfall_data" />
+      </div>
+      <button class="btn btn-export" id="expBtn" onclick="exportCsv()">
+        ⬇ 匯出 CSV
+      </button>
+    </div>
+  </section>
+
+</main>
+
+<!-- ─── Script ────────────────────────────────────────────────── -->
+<script>
+'use strict';
+
+// ================================================================
+// Constants
+// ================================================================
+const API_BASE      = 'https://raingaugebackend.itanki3085.workers.dev/';
+const MAX_RANGE_MS  = 7 * 24 * 60 * 60 * 1000;   // 7 days in ms
+const CHART_H_PX    = 320;                         // chart canvas height
+const BAR_MIN_W_PX  = 36;                          // min px per bar (for scroll)
+
+// Global chart instances
+let dailyChart = null;
+let rangeChart = null;
+
+// ================================================================
+// ── Date / Time Utilities ────────────────────────────────────────
+// ================================================================
+
+/** Returns the number of days in a given year/month (1-indexed). */
+function getDaysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+/** Returns true only if the date is calendar-valid. */
+function isValidDate(year, month, day) {
+  const d = new Date(year, month - 1, day);
+  return d.getFullYear() === year
+      && d.getMonth()    === month - 1
+      && d.getDate()     === day;
+}
+
+/** Convert individual date/time parts → Unix ms (local timezone). */
+function toUnixMs(year, month, day, hour = 0, minute = 0, second = 0) {
+  return new Date(year, month - 1, day, hour, minute, second, 0).getTime();
+}
+
+/** Format a Unix ms timestamp as "YYYY-MM-DD HH:MM:SS" (local timezone). */
+function fmtFull(ts) {
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/**
+ * Format a Unix ms timestamp as a chart X-axis label (local timezone).
+ *   multiDay=false → "HH:MM"
+ *   multiDay=true  → "M/D HH:MM"
+ */
+function fmtLabel(ts, multiDay) {
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return multiDay
+    ? `${d.getMonth()+1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+    : `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ================================================================
+// ── Dropdown Builders ────────────────────────────────────────────
+// ================================================================
+
+function buildYears(el, curY) {
+  for (let y = curY - 5; y <= curY + 1; y++) {
+    const o = new Option(y, y);
+    if (y === curY) o.selected = true;
+    el.add(o);
+  }
+}
+
+function buildMonths(el, curM) {
+  for (let m = 1; m <= 12; m++) {
+    const o = new Option(String(m).padStart(2, '0'), m);
+    if (m === curM) o.selected = true;
+    el.add(o);
+  }
+}
+
+/**
+ * (Re)build day options based on year+month.
+ * Preserves the currently-selected day if still valid, otherwise clamps.
+ * @param {HTMLSelectElement} el
+ * @param {number} year
+ * @param {number} month
+ * @param {number} fallbackDay  - used on first build when el.value is empty
+ */
+function buildDays(el, year, month, fallbackDay) {
+  const maxDay  = getDaysInMonth(year, month);
+  const prevVal = parseInt(el.value, 10);
+  const newVal  = isNaN(prevVal) ? fallbackDay : Math.min(prevVal, maxDay);
+  el.innerHTML  = '';
+  for (let d = 1; d <= maxDay; d++) {
+    el.add(new Option(String(d).padStart(2, '0'), d));
+  }
+  el.value = newVal;
+}
+
+function buildHours(el, curH) {
+  for (let h = 0; h < 24; h++) {
+    const o = new Option(String(h).padStart(2, '0'), h);
+    if (h === curH) o.selected = true;
+    el.add(o);
+  }
+}
+
+function buildMinutes(el, curMin) {
+  for (let m = 0; m < 60; m++) {
+    const o = new Option(String(m).padStart(2, '0'), m);
+    if (m === curMin) o.selected = true;
+    el.add(o);
+  }
+}
+
+/** Wires year/month selects so the day select auto-rebuilds on change. */
+function wireDayRebuild(yearId, monthId, dayId, initDay) {
+  const yearEl  = document.getElementById(yearId);
+  const monthEl = document.getElementById(monthId);
+  const dayEl   = document.getElementById(dayId);
+  const rebuild = () => buildDays(dayEl, +yearEl.value, +monthEl.value, initDay);
+  yearEl.addEventListener('change', rebuild);
+  monthEl.addEventListener('change', rebuild);
+}
+
+// ================================================================
+// ── Init All Dropdowns ────────────────────────────────────────────
+// ================================================================
+
+function initDropdowns() {
+  const now  = new Date();
+  const Y    = now.getFullYear();
+  const M    = now.getMonth() + 1;
+  const D    = now.getDate();
+  const h    = now.getHours();
+  const min  = now.getMinutes();
+
+  // ── Section 1 (date only) ──
+  buildYears (document.getElementById('d1Year'),  Y);
+  buildMonths(document.getElementById('d1Month'), M);
+  buildDays  (document.getElementById('d1Day'),   Y, M, D);
+  document.getElementById('d1Day').value = D;
+  wireDayRebuild('d1Year', 'd1Month', 'd1Day', D);
+
+  // ── Sections 2 & 3 (datetime) ──
+  [
+    { prefix: 'rs', h: 0,  min: 0   },
+    { prefix: 're', h: h,  min: min },
+    { prefix: 'es', h: 0,  min: 0   },
+    { prefix: 'ee', h: h,  min: min },
+  ].forEach(({ prefix, h: dh, min: dm }) => {
+    buildYears  (document.getElementById(`${prefix}Year`),   Y);
+    buildMonths (document.getElementById(`${prefix}Month`),  M);
+    buildDays   (document.getElementById(`${prefix}Day`),    Y, M, D);
+    document.getElementById(`${prefix}Day`).value = D;
+    buildHours  (document.getElementById(`${prefix}Hour`),   dh);
+    buildMinutes(document.getElementById(`${prefix}Minute`), dm);
+    wireDayRebuild(`${prefix}Year`, `${prefix}Month`, `${prefix}Day`, D);
+  });
+}
+
+// ================================================================
+// ── Read Dropdown Values ──────────────────────────────────────────
+// ================================================================
+
+function getDate(prefix) {
+  return {
+    year:  +document.getElementById(`${prefix}Year`).value,
+    month: +document.getElementById(`${prefix}Month`).value,
+    day:   +document.getElementById(`${prefix}Day`).value,
+  };
+}
+
+function getDateTime(prefix) {
+  return {
+    ...getDate(prefix),
+    hour:   +document.getElementById(`${prefix}Hour`).value,
+    minute: +document.getElementById(`${prefix}Minute`).value,
+  };
+}
+
+// ================================================================
+// ── API ───────────────────────────────────────────────────────────
+// ================================================================
+
+async function fetchRainData(beginMs, endMs) {
+  const resp = await fetch(`${API_BASE}?beginTime=${beginMs}&endTime=${endMs}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} – ${resp.statusText}`);
+  return resp.json();
+}
+
+// ================================================================
+// ── Chart Rendering ───────────────────────────────────────────────
+// ================================================================
+
+/**
+ * Renders (or re-renders) a bar chart.
+ *
+ * @param {string}  canvasId    id of the <canvas>
+ * @param {string}  innerId     id of the .chart-inner wrapper div
+ * @param {Chart|null} oldInst  previous Chart instance to destroy
+ * @param {Array}   data        API response array
+ * @param {boolean} multiDay    true → MM/D HH:MM labels
+ * @returns {Chart}             new Chart instance
+ */
+function renderBarChart(canvasId, innerId, oldInst, data, multiDay) {
+  if (oldInst) oldInst.destroy();
+
+  const labels = data.map(d => fmtLabel(d.WorkerTimeStamp, multiDay));
+  const values = data.map(d => d.TiltCount);
+  const maxVal = Math.max(...values, 1);
+
+  const inner     = document.getElementById(innerId);
+  const canvas    = document.getElementById(canvasId);
+  const wrapperW  = inner.parentElement.clientWidth || 860;
+
+  // Dynamic canvas width: guarantee at least BAR_MIN_W_PX per bar
+  const minW   = data.length * BAR_MIN_W_PX + 80; // +80 for y-axis area
+  const chartW = Math.max(wrapperW, minW);
+
+  // Set explicit dimensions (responsive:false mode)
+  canvas.width  = chartW;
+  canvas.height = CHART_H_PX;
+  inner.style.width  = chartW + 'px';
+  inner.style.height = CHART_H_PX + 'px';
+
+  const ctx = canvas.getContext('2d');
+
+  // Gradient fill: top → bottom
+  const grad = ctx.createLinearGradient(0, 0, 0, CHART_H_PX);
+  grad.addColorStop(0,   'rgba(39, 181, 204, 0.88)');
+  grad.addColorStop(0.7, 'rgba(39, 181, 204, 0.55)');
+  grad.addColorStop(1,   'rgba(39, 181, 204, 0.30)');
+
+  // Font size for data labels (scale with bar width)
+  const barPx      = (chartW - 80) / data.length;
+  const labelFontSz = Math.max(9, Math.min(12, Math.floor(barPx / 3)));
+  const tickFontSz  = Math.max(9, Math.min(11, Math.floor(barPx / 3.5)));
+
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '傾倒次數',
+        data: values,
+        backgroundColor: grad,
+        borderColor: 'rgba(0, 142, 161, 0.85)',
+        borderWidth: 1,
+        borderRadius: 5,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 26, right: 8, left: 4, bottom: 4 } },
+      plugins: {
+        legend: { display: false },
+
+        // ── Data Labels (value on top of each bar) ──
+        datalabels: {
+          anchor: 'end',
+          align: 'top',
+          offset: -1,
+          color: '#005f6e',
+          font: {
+            family: "'DM Mono', monospace",
+            size: labelFontSz,
+            weight: '500',
+          },
+          formatter: v => v,
+          // Hide label when bar is too narrow to read
+          display: () => barPx >= 20,
+        },
+
+        // ── Tooltip ──
+        tooltip: {
+          backgroundColor: 'rgba(0, 60, 75, 0.92)',
+          titleFont: { family: "'Outfit', sans-serif", size: 12 },
+          bodyFont:  { family: "'DM Mono', monospace", size: 13 },
+          padding: 10, cornerRadius: 8,
+          callbacks: {
+            title: items => fmtFull(data[items[0].dataIndex].WorkerTimeStamp),
+            label: item  => `  傾倒次數：${item.raw} 次`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid:  { color: 'rgba(39,181,204,0.08)', drawTicks: false },
+          border:{ color: 'rgba(39,181,204,0.2)' },
+          ticks: {
+            maxRotation: 50,
+            font: { family: "'DM Mono', monospace", size: tickFontSz },
+            color: '#486470',
+            autoSkip: true,
+            maxTicksLimit: Math.min(data.length, 48),
+          },
+        },
+        y: {
+          beginAtZero: true,
+          suggestedMax: maxVal * 1.18,
+          grid:  { color: 'rgba(39,181,204,0.12)', drawTicks: false },
+          border:{ color: 'rgba(39,181,204,0.2)' },
+          ticks: {
+            font: { family: "'DM Mono', monospace", size: 11 },
+            color: '#486470',
+            precision: 0,
+          },
+          title: {
+            display: true,
+            text: '傾倒次數（次）',
+            color: '#486470',
+            font: { family: "'Outfit', sans-serif", size: 11 },
+          },
+        },
+      },
+    },
+    // ChartDataLabels is auto-registered globally via CDN; config above enables it.
+  });
+}
+
+// ================================================================
+// ── UI Helpers ────────────────────────────────────────────────────
+// ================================================================
+
+/** Show an alert banner. type: 'warn' | 'error' | 'success' */
+function showAlert(id, msg, type = 'warn') {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className   = `alert show-${type}`;
+}
+
+function hideAlert(id) {
+  const el = document.getElementById(id);
+  el.className = 'alert';
+}
+
+/** Show the status message element with HTML content. */
+function showStatus(id, html, isError = false) {
+  const el    = document.getElementById(id);
+  el.innerHTML = html;
+  el.className = `status-msg${isError ? ' is-error' : ''}`;
+}
+
+function hideStatus(id) {
+  document.getElementById(id).className = 'status-msg hidden';
+}
+
+/** Enable/disable a button and optionally update its label. */
+function setBtn(id, disabled, label) {
+  const el = document.getElementById(id);
+  el.disabled = disabled;
+  if (label !== undefined) el.innerHTML = label;
+}
+
+/** Destroy a chart instance and return null. */
+function destroyChart(inst) {
+  if (inst) inst.destroy();
+  return null;
+}
+
+// ================================================================
+// ── Section 1: Daily Query ────────────────────────────────────────
+// ================================================================
+
+async function queryDailyData() {
+  const { year, month, day } = getDate('d1');
+
+  if (!isValidDate(year, month, day)) {
+    showAlert('d1Alert', '⚠️ 所選日期不合法，請重新選擇。', 'warn');
+    return;
+  }
+  hideAlert('d1Alert');
+
+  const beginMs = toUnixMs(year, month, day, 0, 0, 0);
+  const endMs   = toUnixMs(year, month, day, 23, 59, 59);
+
+  showStatus('d1Status', '<span class="spinner"></span>資料載入中...');
+  setBtn('d1QueryBtn', true);
+
+  try {
+    const data = await fetchRainData(beginMs, endMs);
+
+    if (!data || data.length === 0) {
+      showStatus('d1Status', '⚠️ 此日期無可用資料');
+      dailyChart = destroyChart(dailyChart);
+      return;
+    }
+
+    hideStatus('d1Status');
+    dailyChart = renderBarChart('d1Canvas', 'd1ChartInner', dailyChart, data, false);
+
+  } catch (err) {
+    showStatus('d1Status', `❌ 請求失敗：${err.message}`, true);
+    dailyChart = destroyChart(dailyChart);
+  } finally {
+    setBtn('d1QueryBtn', false, '🔍 查詢');
+  }
+}
+
+// ================================================================
+// ── Section 2: Range Query ────────────────────────────────────────
+// ================================================================
+
+async function queryRangeData() {
+  const start = getDateTime('rs');
+  const end   = getDateTime('re');
+
+  if (!isValidDate(start.year, start.month, start.day)) {
+    showAlert('d2Alert', '⚠️ 開始日期不合法，請重新選擇。', 'warn'); return;
+  }
+  if (!isValidDate(end.year, end.month, end.day)) {
+    showAlert('d2Alert', '⚠️ 結束日期不合法，請重新選擇。', 'warn'); return;
+  }
+
+  const beginMs = toUnixMs(start.year, start.month, start.day, start.hour, start.minute);
+  const endMs   = toUnixMs(end.year,   end.month,   end.day,   end.hour,   end.minute);
+
+  if (endMs <= beginMs) {
+    showAlert('d2Alert', '⚠️ 結束時間必須晚於開始時間，請重新選擇。', 'warn'); return;
+  }
+
+  const diffDays = (endMs - beginMs) / 86_400_000;
+  if (endMs - beginMs > MAX_RANGE_MS) {
+    showAlert('d2Alert',
+      `⚠️ 查詢範圍為 ${diffDays.toFixed(1)} 天，超過 7 天上限。伺服器將自動截斷結束時間至開始時間後 7 天。`,
+      'warn');
+  } else {
+    hideAlert('d2Alert');
+  }
+
+  // Determine whether data spans multiple calendar days (affects label format)
+  const multiDay = new Date(beginMs).toDateString() !== new Date(endMs).toDateString();
+
+  showStatus('d2Status', '<span class="spinner"></span>資料載入中...');
+  setBtn('d2QueryBtn', true);
+
+  try {
+    const data = await fetchRainData(beginMs, endMs);
+
+    if (!data || data.length === 0) {
+      showStatus('d2Status', '⚠️ 此時間範圍無可用資料');
+      rangeChart = destroyChart(rangeChart);
+      return;
+    }
+
+    hideStatus('d2Status');
+    rangeChart = renderBarChart('d2Canvas', 'd2ChartInner', rangeChart, data, multiDay);
+
+  } catch (err) {
+    showStatus('d2Status', `❌ 請求失敗：${err.message}`, true);
+    rangeChart = destroyChart(rangeChart);
+  } finally {
+    setBtn('d2QueryBtn', false, '🔍 查詢');
+  }
+}
+
+// ================================================================
+// ── Section 3: Export CSV ─────────────────────────────────────────
+// ================================================================
+
+async function exportCsv() {
+  const start = getDateTime('es');
+  const end   = getDateTime('ee');
+
+  if (!isValidDate(start.year, start.month, start.day)) {
+    showAlert('expAlert', '⚠️ 開始日期不合法，請重新選擇。', 'warn'); return;
+  }
+  if (!isValidDate(end.year, end.month, end.day)) {
+    showAlert('expAlert', '⚠️ 結束日期不合法，請重新選擇。', 'warn'); return;
+  }
+
+  const beginMs = toUnixMs(start.year, start.month, start.day, start.hour, start.minute);
+  const endMs   = toUnixMs(end.year,   end.month,   end.day,   end.hour,   end.minute);
+
+  if (endMs <= beginMs) {
+    showAlert('expAlert', '⚠️ 結束時間必須晚於開始時間，請重新選擇。', 'warn'); return;
+  }
+
+  const diffDays = (endMs - beginMs) / 86_400_000;
+  if (endMs - beginMs > MAX_RANGE_MS) {
+    showAlert('expAlert',
+      `⚠️ 所選範圍為 ${diffDays.toFixed(1)} 天，超過 7 天上限。建議縮短時間以取得完整資料；伺服器端將自動截斷至開始後 7 天。`,
+      'warn');
+    // Still allow the request — server will cap on its end.
+  } else {
+    hideAlert('expAlert');
+  }
+
+  setBtn('expBtn', true, '⏳ 下載中...');
+
+  try {
+    const data = await fetchRainData(beginMs, endMs);
+
+    if (!data || data.length === 0) {
+      showAlert('expAlert', '⚠️ 此時間範圍無可用資料可匯出。', 'warn');
+      return;
+    }
+
+    // ── Build CSV (UTF-8 BOM for Excel compatibility) ──
+    const header = 'WorkerTimeStamp,DateTime,TiltCount';
+    const rows   = data.map(d =>
+      `${d.WorkerTimeStamp},${fmtFull(d.WorkerTimeStamp)},${d.TiltCount}`
+    );
+    const csvText = '\ufeff' + [header, ...rows].join('\r\n');
+
+    // Sanitize filename (strip OS-illegal chars)
+    const rawName = (document.getElementById('exportFilename').value.trim() || 'rainfall_data')
+      .replace(/[/\\?%*:|"<>]/g, '_');
+    const filename = `${rawName}.csv`;
+
+    // ── 1st try: File System Access API (user chooses save location) ──
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'CSV 檔案', accept: { 'text/csv': ['.csv'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(csvText);
+        await writable.close();
+        showAlert('expAlert', `✅ 檔案已成功儲存：${handle.name}`, 'success');
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;   // user clicked Cancel
+        // Other error → fall through to anchor-download fallback
+      }
+    }
+
+    // ── Fallback: anchor-based download ──
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showAlert('expAlert', `✅ 已開始下載：${filename}`, 'success');
+
+  } catch (err) {
+    showAlert('expAlert', `❌ 匯出失敗：${err.message}`, 'error');
+  } finally {
+    setBtn('expBtn', false, '⬇ 匯出 CSV');
+  }
+}
+
+// ================================================================
+// ── Bootstrap ─────────────────────────────────────────────────────
+// ================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+  initDropdowns();
+  queryDailyData();   // auto-query today on page load
+});
+</script>
+
+</body>
+</html>
